@@ -1,5 +1,6 @@
 import streamlit as st
-from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
 import re
 
 # -----------------------------------
@@ -12,17 +13,16 @@ st.write("Generate high-quality English poems based on your topic ✨")
 st.write("⚠️ Unethical topics are restricted.")
 
 # -----------------------------------
-# Load Model (Cloud Safe)
+# Load Model Safely (NO PIPELINE)
 # -----------------------------------
 @st.cache_resource
 def load_model():
-    generator = pipeline(
-        task="text2text-generation",
-        model="google/flan-t5-base"   # base version works better on cloud memory
-    )
-    return generator
+    model_name = "google/flan-t5-base"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    return tokenizer, model
 
-generator = load_model()
+tokenizer, model = load_model()
 
 # -----------------------------------
 # Ethical Filter
@@ -42,7 +42,7 @@ def is_unethical(text):
     return False
 
 # -----------------------------------
-# Input
+# User Input
 # -----------------------------------
 topic = st.text_input("Topic :", placeholder="Enter a topic (e.g., Hope, Nature, Success)")
 
@@ -56,21 +56,24 @@ if st.button("Generate Poem"):
 
     else:
         prompt = f"""
-        Write a beautiful, expressive English poem about "{topic}".
-        Use vivid imagery.
+        Write a beautiful, emotional English poem about "{topic}".
         Make it 3 stanzas.
-        Make it emotional and rhythmic.
+        Use vivid imagery and expressive language.
         """
 
         with st.spinner("Crafting your poem... ✨"):
-            result = generator(
-                prompt,
+
+            inputs = tokenizer(prompt, return_tensors="pt")
+
+            outputs = model.generate(
+                **inputs,
                 max_length=256,
+                temperature=0.9,
                 do_sample=True,
-                temperature=0.9
+                top_p=0.95
             )
 
-        poem = result[0]["generated_text"]
+            poem = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
         st.subheader("📜 Output :")
         st.write(poem)
