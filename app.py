@@ -1,50 +1,34 @@
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-import torch
-import re
+from openai import OpenAI
 
 # -----------------------------------
-# Page Config
+# Page Setup
 # -----------------------------------
-st.set_page_config(page_title="Advanced Ethical Poem Generator", page_icon="📝")
+st.set_page_config(page_title="Premium Ethical Poem Generator", page_icon="📝")
 
-st.title("📝 Advanced Ethical Poem Generator")
-st.write("Generate high-quality English poems based on your topic ✨")
-st.write("⚠️ Unethical topics are restricted.")
-
-# -----------------------------------
-# Load Model Safely (NO PIPELINE)
-# -----------------------------------
-@st.cache_resource
-def load_model():
-    model_name = "google/flan-t5-base"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-    return tokenizer, model
-
-tokenizer, model = load_model()
+st.title("📝 Premium Ethical Poem Generator")
+st.write("High-quality English poetry powered by AI ✨")
+st.write("⚠️ Unethical topics are automatically filtered.")
 
 # -----------------------------------
-# Ethical Filter
+# Load OpenAI Client
 # -----------------------------------
-UNETHICAL_KEYWORDS = [
-    "violence", "terror", "hate", "racism",
-    "sexism", "drugs", "weapon", "murder",
-    "kill", "bomb", "crime", "porn",
-    "explicit", "abuse"
-]
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
+# -----------------------------------
+# Moderation Function
+# -----------------------------------
 def is_unethical(text):
-    text = text.lower()
-    for word in UNETHICAL_KEYWORDS:
-        if word in text:
-            return True
-    return False
+    response = client.moderations.create(
+        model="omni-moderation-latest",
+        input=text
+    )
+    return response.results[0].flagged
 
 # -----------------------------------
-# User Input
+# Input
 # -----------------------------------
-topic = st.text_input("Topic :", placeholder="Enter a topic (e.g., Hope, Nature, Success)")
+topic = st.text_input("Topic :", placeholder="Enter any topic...")
 
 if st.button("Generate Poem"):
 
@@ -55,25 +39,32 @@ if st.button("Generate Poem"):
         st.error("⚠️ This topic violates ethical guidelines. Please enter a safe topic.")
 
     else:
-        prompt = f"""
-        Write a beautiful, emotional English poem about "{topic}".
-        Make it 3 stanzas.
-        Use vivid imagery and expressive language.
-        """
 
         with st.spinner("Crafting your poem... ✨"):
 
-            inputs = tokenizer(prompt, return_tensors="pt")
-
-            outputs = model.generate(
-                **inputs,
-                max_length=256,
-                temperature=0.9,
-                do_sample=True,
-                top_p=0.95
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a professional English poet. "
+                                   "Write beautiful, structured, emotionally rich poems. "
+                                   "Never write about harmful or unethical content."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Write a 3-4 stanza poetic masterpiece about '{topic}'. "
+                                   "Use vivid imagery, rhythm, and literary devices."
+                    }
+                ],
+                temperature=0.9
             )
 
-            poem = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            poem = response.choices[0].message.content
 
-        st.subheader("📜 Output :")
-        st.write(poem)
+        # Double-check output moderation
+        if is_unethical(poem):
+            st.error("⚠️ Generated content violated ethical guidelines.")
+        else:
+            st.subheader("📜 Output :")
+            st.write(poem)
